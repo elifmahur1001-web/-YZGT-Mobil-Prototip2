@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#08110e" />
+  <title>YZGT Mobil Erken Uyarı Sistemi</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <style>
+    :root{
+      --bg:#07100d;
+      --panel:#101a16;
+      --panel2:#17241e;
+      --line:#2b443a;
+      --text:#eef7f1;
+      --muted:#9eb1a7;
+      --green:#58d68d;
+      --yellow:#f4d03f;
+      --orange:#f39c12;
+      --red:#ff5f5f;
+      --cyan:#56c9f5;
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      min-height:100vh;
+      background:
+        radial-gradient(circle at top, rgba(50,100,75,.28), transparent 38%),
+        var(--bg);
+      color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+
+    .app{
+      width:min(100%,980px);
+      margin:0 auto;
+      padding:14px;
+      padding-bottom:calc(26px + env(safe-area-inset-bottom));
+    }
+
+    .header{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:center;
+      margin-bottom:12px;
+    }
+
+    h1{
+      margin:0;
+      font-size:20px;
+      letter-spacing:.4px;
+    }
+
+    .sub{
+      margin:4px 0 0;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    .badge{
+      padding:8px 11px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      color:var(--green);
+      background:rgba(88,214,141,.08);
+      font-size:12px;
+      white-space:nowrap;
+    }
+
+    .card{
+      background:rgba(16,26,22,.95);
+      border:1px solid var(--line);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:0 16px 44px rgba(0,0,0,.28);
+    }
+
+    .camera-wrap{
+      position:relative;
+      background:#000;
+      aspect-ratio:9/16;
+      max-height:68vh;
+      overflow:hidden;
+    }
+
+    video,canvas{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+
+    .scan-line{
+      position:absolute;
+      left:0;right:0;
+      height:2px;
+      background:linear-gradient(90deg,transparent,var(--green),transparent);
+      box-shadow:0 0 14px var(--green);
+      animation:scan 2.8s linear infinite;
+      opacity:.55;
+      pointer-events:none;
+      z-index:2;
+    }
+
+    @keyframes scan{
+      from{top:4%}
+      to{top:96%}
+    }
+
+    .camera-message{
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      text-align:center;
+      padding:24px;
+      color:var(--muted);
+      background:linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.65));
+      z-index:3;
+    }
+
+    .hidden{display:none!important}
+
+    .controls{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:9px;
+      padding:12px;
+    }
+
+    button{
+      border:0;
+      border-radius:13px;
+      padding:13px 9px;
+      font-weight:800;
+      font-size:14px;
+    }
+
+    .primary{background:var(--green);color:#062013}
+    .secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+    .danger{background:#42191a;color:#ffdede;border:1px solid #703032}
+    button:disabled{opacity:.45}
+
+    .summary{
+      margin-top:12px;
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:1px;
+      background:var(--line);
+      border:1px solid var(--line);
+      border-radius:18px;
+      overflow:hidden;
+    }
+
+    .stat{
+      background:var(--panel);
+      text-align:center;
+      padding:13px 6px;
+    }
+
+    .stat span{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:6px;
+    }
+
+    .stat strong{font-size:21px}
+
+    .status-panel{
+      margin-top:12px;
+      padding:14px;
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:var(--panel);
+    }
+
+    .status-line{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+
+    .status-title{
+      font-size:13px;
+      color:var(--muted);
+      margin-bottom:5px;
+    }
+
+    .status-value{
+      font-size:20px;
+      font-weight:900;
+    }
+
+    .level{
+      border-radius:999px;
+      padding:8px 11px;
+      font-size:12px;
+      font-weight:900;
+      border:1px solid var(--line);
+    }
+
+    .level.green{color:var(--green);background:rgba(88,214,141,.09)}
+    .level.yellow{color:var(--yellow);background:rgba(244,208,63,.09)}
+    .level.orange{color:var(--orange);background:rgba(243,156,18,.09)}
+    .level.red{color:var(--red);background:rgba(255,95,95,.09)}
+
+    .last-alert{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .logs{
+      margin-top:12px;
+      padding:14px;
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:var(--panel);
+    }
+
+    .logs h2{
+      margin:0 0 10px;
+      font-size:16px;
+    }
+
+    #logList{
+      display:grid;
+      gap:8px;
+      max-height:260px;
+      overflow:auto;
+    }
+
+    .log-item{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      padding:11px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:var(--panel2);
+      font-size:13px;
+    }
+
+    .log-item small{color:var(--muted)}
+    .empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+    .footer{
+      margin:12px 4px 0;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+
+    @media (min-width:720px){
+      .camera-wrap{aspect-ratio:16/9}
+      .app{padding-top:24px}
+    }
+  </style>
+</head>
+<body>
+<main class="app">
+  <header class="header">
+    <div>
+      <h1>YZGT Mobil Erken Uyarı Sistemi</h1>
+      <p class="sub">İnsan, araç ve hayvan tespit prototipi</p>
+    </div>
+    <div class="badge" id="systemBadge">Model yükleniyor</div>
+  </header>
+
+  <section class="card">
+    <div class="camera-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="scan-line"></div>
+      <div class="camera-message" id="cameraMessage">
+        <div>
+          <strong>Kamera kapalı</strong>
+          <p>Kamerayı başlat ve izin ver.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="primary" id="startBtn">Kamerayı Başlat</button>
+      <button class="secondary" id="switchBtn" disabled>Kamerayı Değiştir</button>
+      <button class="secondary" id="soundBtn">Ses Açık</button>
+    </div>
+  </section>
+
+  <section class="summary">
+    <div class="stat">
+      <span>İnsan</span>
+      <strong id="humanCount">0</strong>
+    </div>
+    <div class="stat">
+      <span>Araç</span>
+      <strong id="vehicleCount">0</strong>
+    </div>
+    <div class="stat">
+      <span>Hayvan</span>
+      <strong id="animalCount">0</strong>
+    </div>
+    <div class="stat">
+      <span>Toplam Olay</span>
+      <strong id="eventCount">0</strong>
+    </div>
+  </section>
+
+  <section class="status-panel">
+    <div class="status-line">
+      <div>
+        <div class="status-title">SİSTEM DURUMU</div>
+        <div class="status-value" id="statusValue">BEKLEMEDE</div>
+      </div>
+      <div class="level green" id="alarmLevel">BÖLGE TEMİZ</div>
+    </div>
+    <div class="last-alert" id="lastAlert">
+      Son ikaz: Henüz kayıt yok.
+    </div>
+  </section>
+
+  <section class="logs">
+    <h2>Olay Kayıtları</h2>
+    <div id="logList">
+      <div class="empty">Henüz olay kaydı yok.</div>
+    </div>
+  </section>
+
+  <p class="footer">
+    Bu sürüm sunum amaçlı prototiptir. Yüz tanıma yapmaz ve kimlik belirlemez.
+    Tespit işlemi telefon tarayıcısında gerçekleştirilir.
+  </p>
+</main>
+
+<script>
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("overlay");
+  const ctx = canvas.getContext("2d");
+
+  const startBtn = document.getElementById("startBtn");
+  const switchBtn = document.getElementById("switchBtn");
+  const soundBtn = document.getElementById("soundBtn");
+  const cameraMessage = document.getElementById("cameraMessage");
+
+  const humanCountEl = document.getElementById("humanCount");
+  const vehicleCountEl = document.getElementById("vehicleCount");
+  const animalCountEl = document.getElementById("animalCount");
+  const eventCountEl = document.getElementById("eventCount");
+  const statusValue = document.getElementById("statusValue");
+  const alarmLevel = document.getElementById("alarmLevel");
+  const lastAlert = document.getElementById("lastAlert");
+  const systemBadge = document.getElementById("systemBadge");
+  const logList = document.getElementById("logList");
+
+  const HUMAN_CLASSES = ["person"];
+  const VEHICLE_CLASSES = ["car", "truck", "bus", "motorcycle", "bicycle", "train", "boat"];
+  const ANIMAL_CLASSES = [
+    "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe"
+  ];
+
+  const TURKISH_LABELS = {
+    person:"İNSAN",
+    car:"OTOMOBİL",
+    truck:"KAMYON",
+    bus:"OTOBÜS",
+    motorcycle:"MOTOSİKLET",
+    bicycle:"BİSİKLET",
+    train:"TREN",
+    boat:"TEKNE",
+    bird:"KUŞ",
+    cat:"KEDİ",
+    dog:"KÖPEK",
+    horse:"AT",
+    sheep:"KOYUN",
+    cow:"BÜYÜKBAŞ",
+    elephant:"FİL",
+    bear:"AYI",
+    zebra:"ZEBRA",
+    giraffe:"ZÜRAFA"
+  };
+
+  let model = null;
+  let stream = null;
+  let running = false;
+  let facingMode = "environment";
+  let soundEnabled = true;
+  let eventCount = 0;
+
+  let lastSpeechAt = 0;
+  let lastSignature = "";
+  const SPEECH_COOLDOWN = 12000;
+
+  async function loadModel(){
+    try{
+      systemBadge.textContent = "Model yükleniyor";
+      model = await cocoSsd.load();
+      systemBadge.textContent = "Yapay zekâ hazır";
+    }catch(err){
+      console.error(err);
+      systemBadge.textContent = "Model yüklenemedi";
+      alert("Model yüklenemedi. İnternet bağlantısını kontrol et.");
+    }
+  }
+
+  async function startCamera(){
+    if(!model){
+      alert("Yapay zekâ modeli henüz hazır değil.");
+      return;
+    }
+
+    stopCamera();
+
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:{ideal:facingMode},
+          width:{ideal:1280},
+          height:{ideal:720}
+        },
+        audio:false
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      running = true;
+      startBtn.textContent = "Kamerayı Durdur";
+      switchBtn.disabled = false;
+      cameraMessage.classList.add("hidden");
+      statusValue.textContent = "CANLI İZLEME";
+      systemBadge.textContent = "Canlı izleme";
+      detectLoop();
+    }catch(err){
+      console.error(err);
+      alert("Kamera açılamadı. Tarayıcı kamera iznini kontrol et.");
+    }
+  }
+
+  function stopCamera(){
+    running = false;
+
+    if(stream){
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    video.srcObject = null;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    startBtn.textContent = "Kamerayı Başlat";
+    switchBtn.disabled = true;
+    cameraMessage.classList.remove("hidden");
+
+    humanCountEl.textContent = "0";
+    vehicleCountEl.textContent = "0";
+    animalCountEl.textContent = "0";
+
+    statusValue.textContent = "BEKLEMEDE";
+    setAlarm("BÖLGE TEMİZ","green");
+    systemBadge.textContent = model ? "Yapay zekâ hazır" : "Model yükleniyor";
+  }
+
+  async function switchCamera(){
+    facingMode = facingMode === "environment" ? "user" : "environment";
+    await startCamera();
+  }
+
+  function resizeCanvas(){
+    canvas.width = video.videoWidth || video.clientWidth;
+    canvas.height = video.videoHeight || video.clientHeight;
+  }
+
+  async function detectLoop(){
+    if(!running) return;
+
+    if(video.readyState >= 2){
+      resizeCanvas();
+
+      try{
+        const predictions = await model.detect(video);
+        const accepted = predictions.filter(item =>
+          item.score >= 0.55 &&
+          (HUMAN_CLASSES.includes(item.class) ||
+           VEHICLE_CLASSES.includes(item.class) ||
+           ANIMAL_CLASSES.includes(item.class))
+        );
+
+        const humans = accepted.filter(x => HUMAN_CLASSES.includes(x.class));
+        const vehicles = accepted.filter(x => VEHICLE_CLASSES.includes(x.class));
+        const animals = accepted.filter(x => ANIMAL_CLASSES.includes(x.class));
+
+        humanCountEl.textContent = humans.length;
+        vehicleCountEl.textContent = vehicles.length;
+        animalCountEl.textContent = animals.length;
+
+        drawPredictions(accepted);
+        updateStatus(humans.length, vehicles.length, animals.length);
+      }catch(err){
+        console.error(err);
+        statusValue.textContent = "ALGILAMA HATASI";
+      }
+    }
+
+    requestAnimationFrame(detectLoop);
+  }
+
+  function drawPredictions(items){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    items.forEach(item => {
+      const [x,y,w,h] = item.bbox;
+      const score = Math.round(item.score * 100);
+
+      let color = "#58d68d";
+      if(VEHICLE_CLASSES.includes(item.class)) color = "#56c9f5";
+      if(ANIMAL_CLASSES.includes(item.class)) color = "#f4d03f";
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x,y,w,h);
+
+      const name = TURKISH_LABELS[item.class] || item.class.toUpperCase();
+      const label = `${name} %${score}`;
+
+      ctx.font = "bold 22px Arial";
+      const width = ctx.measureText(label).width + 18;
+
+      ctx.fillStyle = "rgba(6,22,16,.88)";
+      ctx.fillRect(x,Math.max(0,y-34),width,34);
+
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label,x+9,Math.max(24,y-9));
+    });
+  }
+
+  function updateStatus(humans,vehicles,animals){
+    const signature = `${humans}-${vehicles}-${animals}`;
+
+    if(humans === 0 && vehicles === 0 && animals === 0){
+      statusValue.textContent = "BÖLGE TEMİZ";
+      setAlarm("BÖLGE TEMİZ","green");
+      lastSignature = signature;
+      return;
+    }
+
+    let message = "";
+    let level = "yellow";
+    let label = "DİKKAT";
+
+    if(humans > 0 && vehicles > 0 && animals > 0){
+      message = `Dikkat. Bölgede ${humans} insan, ${vehicles} araç ve ${animals} hayvan tespit edildi.`;
+      level = "red";
+      label = "ÇOKLU TESPİT";
+    }else if(humans > 0 && vehicles > 0){
+      message = `Dikkat. Bölgede ${humans} insan ve ${vehicles} araç tespit edildi.`;
+      level = "red";
+      label = "İNSAN VE ARAÇ";
+    }else if(humans > 0 && animals > 0){
+      message = `Dikkat. Bölgede ${humans} insan ve ${animals} hayvan tespit edildi.`;
+      level = "orange";
+      label = "İNSAN VE HAYVAN";
+    }else if(vehicles > 0 && animals > 0){
+      message = `Dikkat. Bölgede ${vehicles} araç ve ${animals} hayvan tespit edildi.`;
+      level = "orange";
+      label = "ARAÇ VE HAYVAN";
+    }else if(humans > 0){
+      message = humans === 1
+        ? "Dikkat. Bölgede insan tespit edildi."
+        : `Dikkat. Bölgede ${humans} insan tespit edildi.`;
+      level = "red";
+      label = "İNSAN TESPİTİ";
+    }else if(vehicles > 0){
+      message = vehicles === 1
+        ? "Dikkat. Bölgede araç tespit edildi."
+        : `Dikkat. Bölgede ${vehicles} araç tespit edildi.`;
+      level = "orange";
+      label = "ARAÇ TESPİTİ";
+    }else if(animals > 0){
+      message = animals === 1
+        ? "Bilgilendirme. Bölgede hayvan tespit edildi."
+        : `Bilgilendirme. Bölgede ${animals} hayvan tespit edildi.`;
+      level = "yellow";
+      label = "HAYVAN TESPİTİ";
+    }
+
+    statusValue.textContent = label;
+    setAlarm(label,level);
+
+    const now = Date.now();
+    const shouldSpeak =
+      signature !== lastSignature ||
+      now - lastSpeechAt > SPEECH_COOLDOWN;
+
+    if(shouldSpeak){
+      lastSignature = signature;
+      lastSpeechAt = now;
+      speak(message);
+      addLog(message,level);
+    }
+  }
+
+  function setAlarm(text,level){
+    alarmLevel.textContent = text;
+    alarmLevel.className = `level ${level}`;
+  }
+
+  function speak(text){
+    if(!soundEnabled || !("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "tr-TR";
+    utterance.rate = 0.92;
+    utterance.pitch = 0.95;
+    utterance.volume = 1;
+
+    const voices = window.speechSynthesis.getVoices();
+    const trVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("tr"));
+    if(trVoice) utterance.voice = trVoice;
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function addLog(message,level){
+    eventCount += 1;
+    eventCountEl.textContent = eventCount;
+
+    if(logList.querySelector(".empty")){
+      logList.innerHTML = "";
+    }
+
+    const now = new Date();
+    const row = document.createElement("div");
+    row.className = "log-item";
+
+    row.innerHTML = `
+      <div>
+        <strong>${level.toUpperCase()} SEVİYE</strong><br>
+        <small>${message}</small>
+      </div>
+      <small>${now.toLocaleTimeString("tr-TR")}</small>
+    `;
+
+    logList.prepend(row);
+    lastAlert.textContent = `Son ikaz: ${now.toLocaleTimeString("tr-TR")} - ${message}`;
+  }
+
+  startBtn.addEventListener("click",()=>{
+    if(running) stopCamera();
+    else startCamera();
+  });
+
+  switchBtn.addEventListener("click",switchCamera);
+
+  soundBtn.addEventListener("click",()=>{
+    soundEnabled = !soundEnabled;
+    soundBtn.textContent = soundEnabled ? "Ses Açık" : "Ses Kapalı";
+    soundBtn.className = soundEnabled ? "secondary" : "danger";
+
+    if(!soundEnabled && "speechSynthesis" in window){
+      window.speechSynthesis.cancel();
+    }else if(soundEnabled){
+      speak("Sesli ikaz sistemi aktif.");
+    }
+  });
+
+  loadModel();
+</script>
+</body>
+</html>
