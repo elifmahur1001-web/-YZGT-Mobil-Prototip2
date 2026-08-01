@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07110d">
+  <title>YZGT v2.1</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <style>
+    :root{
+      --bg:#07110d;--panel:#101a16;--panel2:#18241e;--line:#2d463b;
+      --text:#eef7f1;--muted:#9eafa6;--green:#58d68d;--yellow:#f4d03f;
+      --orange:#f39c12;--red:#ff6363;--blue:#5dade2
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100vh;color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:radial-gradient(circle at top,rgba(46,94,70,.32),transparent 38%),var(--bg)
+    }
+    button,input,select{font:inherit}
+    .hidden{display:none!important}
+    .screen{min-height:100vh}
+    .login-screen{
+      position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:20px;
+      background:radial-gradient(circle at top,rgba(55,112,83,.34),transparent 42%),#06100c
+    }
+    .login-card{
+      width:min(100%,390px);padding:24px;border:1px solid var(--line);border-radius:24px;
+      background:rgba(16,26,22,.98);box-shadow:0 26px 70px rgba(0,0,0,.45)
+    }
+    .logo{
+      width:76px;height:76px;margin:0 auto 15px;border-radius:22px;display:grid;place-items:center;
+      background:rgba(88,214,141,.11);border:1px solid rgba(88,214,141,.35);font-size:36px
+    }
+    .login-card h1{font-size:23px;text-align:center;margin:0}
+    .login-card p{text-align:center;color:var(--muted);font-size:13px;line-height:1.5}
+    .field{margin-top:14px}
+    .field label{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:7px}
+    .field input,.field select{
+      width:100%;padding:14px;border-radius:13px;border:1px solid var(--line);
+      background:var(--panel2);color:var(--text);outline:none
+    }
+    .field input:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(88,214,141,.1)}
+    .login-row{display:flex;justify-content:space-between;align-items:center;margin:14px 0}
+    .remember{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+    .remember input{accent-color:var(--green)}
+    .btn{
+      border:0;border-radius:13px;padding:13px 11px;font-weight:800;cursor:pointer
+    }
+    .btn-primary{background:var(--green);color:#062014}
+    .btn-secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+    .btn-danger{background:#41191b;color:#ffdede;border:1px solid #743235}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .login-btn{width:100%;padding:14px}
+    .login-error{
+      display:none;margin-top:12px;padding:10px;border-radius:11px;text-align:center;font-size:12px;
+      color:#ffbcbc;background:rgba(255,99,99,.1);border:1px solid rgba(255,99,99,.3)
+    }
+    .login-error.show{display:block}
+    .demo-note{font-size:11px!important}
+
+    .app{width:min(100%,1000px);margin:auto;padding:14px;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+    .header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+    .header h2{margin:0;font-size:20px}
+    .header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .header-actions{display:flex;align-items:center;gap:8px}
+    .badge{
+      padding:8px 11px;border-radius:999px;border:1px solid var(--line);
+      color:var(--green);background:rgba(88,214,141,.08);font-size:12px;white-space:nowrap
+    }
+    .small-btn{padding:8px 10px;font-size:12px}
+    .card{
+      overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--panel);
+      box-shadow:0 16px 44px rgba(0,0,0,.25)
+    }
+    .camera-wrap{position:relative;aspect-ratio:9/16;max-height:68vh;background:#000;overflow:hidden}
+    video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .camera-message{
+      position:absolute;inset:0;z-index:3;display:grid;place-items:center;text-align:center;padding:25px;
+      color:var(--muted);background:linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.66))
+    }
+    .controls{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:9px;padding:12px}
+    .stats{
+      display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:12px;
+      overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--line)
+    }
+    .stat{padding:13px 5px;text-align:center;background:var(--panel)}
+    .stat span{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+    .stat strong{font-size:21px}
+    .panel{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+    .status-row{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .eyebrow{font-size:12px;color:var(--muted);margin-bottom:5px}
+    .status-value{font-size:20px;font-weight:900}
+    .level{padding:8px 11px;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:900}
+    .level.green{color:var(--green);background:rgba(88,214,141,.08)}
+    .level.yellow{color:var(--yellow);background:rgba(244,208,63,.08)}
+    .level.orange{color:var(--orange);background:rgba(243,156,18,.08)}
+    .level.red{color:var(--red);background:rgba(255,99,99,.08)}
+    .last-alert{margin-top:10px;color:var(--muted);font-size:13px;line-height:1.5}
+    .logs h3{margin:0 0 10px;font-size:16px}
+    #logList{display:grid;gap:8px;max-height:260px;overflow:auto}
+    .log-item{
+      display:flex;justify-content:space-between;gap:10px;padding:11px;border-radius:12px;
+      border:1px solid var(--line);background:var(--panel2);font-size:13px
+    }
+    .log-item small{color:var(--muted)}
+    .empty{color:var(--muted);font-size:13px}
+    .footer{margin:12px 4px 0;color:var(--muted);font-size:12px;line-height:1.5}
+
+    .settings-overlay{
+      position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.72);display:flex;
+      justify-content:flex-end;backdrop-filter:blur(4px)
+    }
+    .settings-drawer{
+      width:min(92%,430px);height:100%;overflow:auto;padding:18px;
+      background:#0d1713;border-left:1px solid var(--line);
+      padding-bottom:calc(30px + env(safe-area-inset-bottom))
+    }
+    .drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .drawer-head h3{margin:0}
+    .setting-box{padding:14px;margin-bottom:12px;border-radius:14px;border:1px solid var(--line);background:var(--panel)}
+    .setting-box h4{margin:0 0 12px;font-size:14px}
+    .setting-row{margin-bottom:13px}
+    .setting-row:last-child{margin-bottom:0}
+    .setting-row label{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:7px}
+    .setting-row input,.setting-row select{
+      width:100%;padding:12px;border:1px solid var(--line);border-radius:11px;
+      background:var(--panel2);color:var(--text)
+    }
+    .setting-row input[type=range]{padding:0;accent-color:var(--green)}
+    .settings-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    @media(min-width:720px){.camera-wrap{aspect-ratio:16/9}.app{padding-top:24px}}
+  </style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="logo">🛡️</div>
+    <h1>YZGT Sistem Girişi</h1>
+    <p>Yapay Zekâ Destekli Güvenlik ve Takip Sistemi</p>
+
+    <div class="field">
+      <label>KULLANICI ADI</label>
+      <input id="username" autocomplete="username" placeholder="Kullanıcı adını gir">
+    </div>
+    <div class="field">
+      <label>ŞİFRE</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Şifreni gir">
+    </div>
+    <div class="login-row">
+      <label class="remember"><input id="rememberMe" type="checkbox"> Beni hatırla</label>
+      <span style="font-size:12px;color:var(--muted)">Güvenli erişim</span>
+    </div>
+    <button class="btn btn-primary login-btn" id="loginBtn">Sisteme Giriş Yap</button>
+    <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı.</div>
+    <p class="demo-note">Demo giriş: <strong>admin</strong> / <strong>1234</strong></p>
+  </div>
+</div>
+
+<div class="settings-overlay hidden" id="settingsOverlay">
+  <aside class="settings-drawer">
+    <div class="drawer-head">
+      <h3>Sistem Ayarları</h3>
+      <button class="btn btn-secondary small-btn" id="closeSettings">Kapat</button>
+    </div>
+
+    <div class="setting-box">
+      <h4>Tespit Hassasiyeti</h4>
+      <div class="setting-row">
+        <label><span>İnsan eşiği</span><strong id="humanValue">%72</strong></label>
+        <input id="humanThreshold" type="range" min="55" max="95" value="72">
+      </div>
+      <div class="setting-row">
+        <label><span>Araç eşiği</span><strong id="vehicleValue">%82</strong></label>
+        <input id="vehicleThreshold" type="range" min="55" max="95" value="82">
+      </div>
+      <div class="setting-row">
+        <label><span>Hayvan eşiği</span><strong id="animalValue">%88</strong></label>
+        <input id="animalThreshold" type="range" min="55" max="95" value="88">
+      </div>
+      <div class="setting-row">
+        <label>Doğrulama seviyesi</label>
+        <select id="verificationLevel">
+          <option value="normal">Normal</option>
+          <option value="strict">Sıkı</option>
+          <option value="veryStrict">Çok sıkı</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-box">
+      <h4>Ses ve Kayıt</h4>
+      <div class="setting-row">
+        <label><span>Ses hızı</span><strong id="voiceValue">0.90</strong></label>
+        <input id="voiceRate" type="range" min="70" max="110" value="90">
+      </div>
+      <div class="setting-row">
+        <label>Uyarı tekrar aralığı</label>
+        <select id="cooldown">
+          <option value="15">15 saniye</option>
+          <option value="30">30 saniye</option>
+          <option value="60">1 dakika</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="settings-actions">
+      <button class="btn btn-secondary" id="resetSettings">Varsayılan</button>
+      <button class="btn btn-primary" id="saveSettings">Kaydet</button>
+    </div>
+  </aside>
+</div>
+
+<main class="app">
+  <header class="header">
+    <div>
+      <h2>YZGT v2.1</h2>
+      <p>Mobil yapay zekâ erken uyarı prototipi</p>
+    </div>
+    <div class="header-actions">
+      <div class="badge" id="systemBadge">Model yükleniyor</div>
+      <button class="btn btn-secondary small-btn" id="settingsBtn">Ayarlar</button>
+      <button class="btn btn-secondary small-btn" id="logoutBtn">Çıkış</button>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="camera-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="camera-message" id="cameraMessage">
+        <div><strong>Kamera kapalı</strong><p>Kamerayı başlat ve kamera izni ver.</p></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-primary" id="startBtn">Kamerayı Başlat</button>
+      <button class="btn btn-secondary" id="switchBtn" disabled>Kamera Değiştir</button>
+      <button class="btn btn-secondary" id="soundBtn">Ses Açık</button>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span>İnsan</span><strong id="humanCount">0</strong></div>
+    <div class="stat"><span>Araç</span><strong id="vehicleCount">0</strong></div>
+    <div class="stat"><span>Hayvan</span><strong id="animalCount">0</strong></div>
+    <div class="stat"><span>Olay</span><strong id="eventCount">0</strong></div>
+  </section>
+
+  <section class="panel">
+    <div class="status-row">
+      <div>
+        <div class="eyebrow">SİSTEM DURUMU</div>
+        <div class="status-value" id="statusValue">BEKLEMEDE</div>
+      </div>
+      <div class="level green" id="alarmLevel">BÖLGE TEMİZ</div>
+    </div>
+    <div class="last-alert" id="lastAlert">Son ikaz: Henüz kayıt yok.</div>
+  </section>
+
+  <section class="panel logs">
+    <h3>Olay Kayıtları</h3>
+    <div id="logList"><div class="empty">Henüz olay kaydı yok.</div></div>
+  </section>
+
+  <p class="footer">
+    Bu sürüm sunum amaçlıdır. Yüz tanıma ve kimlik belirleme yapmaz.
+    Kamera görüntüsü telefon tarayıcısında işlenir.
+  </p>
+</main>
+
+<script>
+"use strict";
+
+const $ = id => document.getElementById(id);
+
+const loginScreen=$("loginScreen"),username=$("username"),password=$("password"),
+rememberMe=$("rememberMe"),loginBtn=$("loginBtn"),loginError=$("loginError"),
+logoutBtn=$("logoutBtn");
+
+const video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d"),
+startBtn=$("startBtn"),switchBtn=$("switchBtn"),soundBtn=$("soundBtn"),
+cameraMessage=$("cameraMessage"),systemBadge=$("systemBadge");
+
+const humanCountEl=$("humanCount"),vehicleCountEl=$("vehicleCount"),animalCountEl=$("animalCount"),
+eventCountEl=$("eventCount"),statusValue=$("statusValue"),alarmLevel=$("alarmLevel"),
+lastAlert=$("lastAlert"),logList=$("logList");
+
+const settingsOverlay=$("settingsOverlay"),settingsBtn=$("settingsBtn"),closeSettings=$("closeSettings"),
+humanThreshold=$("humanThreshold"),vehicleThreshold=$("vehicleThreshold"),
+animalThreshold=$("animalThreshold"),verificationLevel=$("verificationLevel"),
+voiceRate=$("voiceRate"),cooldown=$("cooldown"),humanValue=$("humanValue"),
+vehicleValue=$("vehicleValue"),animalValue=$("animalValue"),voiceValue=$("voiceValue"),
+saveSettings=$("saveSettings"),resetSettings=$("resetSettings");
+
+const DEFAULTS={
+  humanThreshold:72,vehicleThreshold:82,animalThreshold:88,
+  verificationLevel:"strict",voiceRate:90,cooldown:30
+};
+let settings={...DEFAULTS};
+
+const HUMAN=["person"];
+const VEHICLE=["car","truck","bus","motorcycle","bicycle"];
+const ANIMAL=["bird","cat","dog","horse","sheep","cow"];
+const TR={
+  person:"İNSAN",car:"OTOMOBİL",truck:"KAMYON",bus:"OTOBÜS",
+  motorcycle:"MOTOSİKLET",bicycle:"BİSİKLET",bird:"KUŞ",cat:"KEDİ",
+  dog:"KÖPEK",horse:"AT",sheep:"KOYUN",cow:"BÜYÜKBAŞ"
+};
+
+let model=null,stream=null,running=false,facing="environment",soundEnabled=true;
+let eventCount=0,lastEventAt=0,detectionHistory={human:[],vehicle:[],animal:[]};
+let speechBusy=false,speechQueue=[];
+
+function loadSettings(){
+  try{settings={...DEFAULTS,...JSON.parse(localStorage.getItem("yzgt_settings")||"{}")}}
+  catch{settings={...DEFAULTS}}
+  humanThreshold.value=settings.humanThreshold;
+  vehicleThreshold.value=settings.vehicleThreshold;
+  animalThreshold.value=settings.animalThreshold;
+  verificationLevel.value=settings.verificationLevel;
+  voiceRate.value=settings.voiceRate;
+  cooldown.value=String(settings.cooldown);
+  updateSettingLabels();
+}
+function updateSettingLabels(){
+  humanValue.textContent=`%${humanThreshold.value}`;
+  vehicleValue.textContent=`%${vehicleThreshold.value}`;
+  animalValue.textContent=`%${animalThreshold.value}`;
+  voiceValue.textContent=(Number(voiceRate.value)/100).toFixed(2);
+}
+[humanThreshold,vehicleThreshold,animalThreshold,voiceRate].forEach(el=>el.addEventListener("input",updateSettingLabels));
+
+function attemptLogin(){
+  if(username.value.trim()==="admin" && password.value==="1234"){
+    loginError.classList.remove("show");
+    if(rememberMe.checked)localStorage.setItem("yzgt_login","1");
+    else localStorage.removeItem("yzgt_login");
+    loginScreen.classList.add("hidden");
+  }else{
+    loginError.classList.add("show");
+    password.value="";
+    password.focus();
+  }
+}
+loginBtn.addEventListener("click",attemptLogin);
+password.addEventListener("keydown",e=>{if(e.key==="Enter")attemptLogin()});
+logoutBtn.addEventListener("click",()=>{
+  stopCamera();
+  localStorage.removeItem("yzgt_login");
+  loginScreen.classList.remove("hidden");
+  password.value="";
+});
+
+settingsBtn.addEventListener("click",()=>{loadSettings();settingsOverlay.classList.remove("hidden")});
+closeSettings.addEventListener("click",()=>settingsOverlay.classList.add("hidden"));
+settingsOverlay.addEventListener("click",e=>{if(e.target===settingsOverlay)settingsOverlay.classList.add("hidden")});
+saveSettings.addEventListener("click",()=>{
+  settings={
+    humanThreshold:Number(humanThreshold.value),
+    vehicleThreshold:Number(vehicleThreshold.value),
+    animalThreshold:Number(animalThreshold.value),
+    verificationLevel:verificationLevel.value,
+    voiceRate:Number(voiceRate.value),
+    cooldown:Number(cooldown.value)
+  };
+  localStorage.setItem("yzgt_settings",JSON.stringify(settings));
+  detectionHistory={human:[],vehicle:[],animal:[]};
+  settingsOverlay.classList.add("hidden");
+});
+resetSettings.addEventListener("click",()=>{
+  settings={...DEFAULTS};
+  localStorage.removeItem("yzgt_settings");
+  loadSettings();
+});
+
+async function loadModel(){
+  try{
+    systemBadge.textContent="Model yükleniyor";
+    model=await cocoSsd.load();
+    systemBadge.textContent="Yapay zekâ hazır";
+  }catch(err){
+    console.error(err);
+    systemBadge.textContent="Model yüklenemedi";
+    alert("Yapay zekâ modeli yüklenemedi. İnternet bağlantısını kontrol et.");
+  }
+}
+
+async function startCamera(){
+  if(!model){alert("Model henüz hazır değil.");return}
+  stopCamera();
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+    running=true;
+    cameraMessage.classList.add("hidden");
+    startBtn.textContent="Kamerayı Durdur";
+    switchBtn.disabled=false;
+    systemBadge.textContent="Canlı izleme";
+    statusValue.textContent="CANLI İZLEME";
+    detectLoop();
+  }catch(err){
+    console.error(err);
+    alert("Kamera açılamadı. Safari kamera iznini kontrol et.");
+  }
+}
+function stopCamera(){
+  running=false;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  video.srcObject=null;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  cameraMessage.classList.remove("hidden");
+  startBtn.textContent="Kamerayı Başlat";
+  switchBtn.disabled=true;
+  humanCountEl.textContent=vehicleCountEl.textContent=animalCountEl.textContent="0";
+  statusValue.textContent="BEKLEMEDE";
+  setLevel("BÖLGE TEMİZ","green");
+  systemBadge.textContent=model?"Yapay zekâ hazır":"Model yükleniyor";
+  detectionHistory={human:[],vehicle:[],animal:[]};
+}
+async function switchCamera(){
+  facing=facing==="environment"?"user":"environment";
+  await startCamera();
+}
+startBtn.addEventListener("click",()=>running?stopCamera():startCamera());
+switchBtn.addEventListener("click",switchCamera);
+
+soundBtn.addEventListener("click",()=>{
+  soundEnabled=!soundEnabled;
+  soundBtn.textContent=soundEnabled?"Ses Açık":"Ses Kapalı";
+  soundBtn.className=soundEnabled?"btn btn-secondary":"btn btn-danger";
+  if(!soundEnabled){
+    speechQueue=[];speechBusy=false;
+    if("speechSynthesis" in window)speechSynthesis.cancel();
+  }else queueSpeech("Sesli ikaz sistemi aktif.");
+});
+
+function categoryOf(cls){
+  if(HUMAN.includes(cls))return "human";
+  if(VEHICLE.includes(cls))return "vehicle";
+  if(ANIMAL.includes(cls))return "animal";
+  return null;
+}
+function thresholdFor(cat){
+  if(cat==="human")return settings.humanThreshold/100;
+  if(cat==="vehicle")return settings.vehicleThreshold/100;
+  return settings.animalThreshold/100;
+}
+function accepted(pred){
+  const cat=categoryOf(pred.class);
+  if(!cat || pred.score<thresholdFor(cat))return false;
+  const frameArea=Math.max(1,(video.videoWidth||1)*(video.videoHeight||1));
+  const area=pred.bbox[2]*pred.bbox[3];
+  return area/frameArea>=0.02;
+}
+function rule(){
+  if(settings.verificationLevel==="veryStrict")return {size:9,needed:7};
+  if(settings.verificationLevel==="strict")return {size:7,needed:5};
+  return {size:5,needed:3};
+}
+function stable(cat,present){
+  const r=rule(),arr=detectionHistory[cat];
+  arr.push(present?1:0);
+  while(arr.length>r.size)arr.shift();
+  return arr.length>=r.size && arr.reduce((a,b)=>a+b,0)>=r.needed;
+}
+function resizeCanvas(){
+  canvas.width=video.videoWidth||video.clientWidth;
+  canvas.height=video.videoHeight||video.clientHeight;
+}
+async function detectLoop(){
+  if(!running)return;
+  if(video.readyState>=2){
+    resizeCanvas();
+    try{
+      const raw=await model.detect(video);
+      const items=raw.filter(accepted);
+      const counts={human:0,vehicle:0,animal:0};
+      items.forEach(p=>counts[categoryOf(p.class)]++);
+      const stableCounts={
+        human:stable("human",counts.human>0)?counts.human:0,
+        vehicle:stable("vehicle",counts.vehicle>0)?counts.vehicle:0,
+        animal:stable("animal",counts.animal>0)?counts.animal:0
+      };
+      humanCountEl.textContent=stableCounts.human;
+      vehicleCountEl.textContent=stableCounts.vehicle;
+      animalCountEl.textContent=stableCounts.animal;
+      draw(items);
+      processStatus(stableCounts,items);
+    }catch(err){
+      console.error(err);
+      statusValue.textContent="ALGILAMA HATASI";
+    }
+  }
+  setTimeout(detectLoop,220);
+}
+function draw(items){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  items.forEach(p=>{
+    const [x,y,w,h]=p.bbox,cat=categoryOf(p.class);
+    const color=cat==="human"?"#58d68d":cat==="vehicle"?"#5dade2":"#f4d03f";
+    ctx.strokeStyle=color;ctx.lineWidth=4;ctx.strokeRect(x,y,w,h);
+    const label=`${TR[p.class]||p.class.toUpperCase()} %${Math.round(p.score*100)}`;
+    ctx.font="bold 22px Arial";
+    const tw=ctx.measureText(label).width+18;
+    ctx.fillStyle="rgba(5,22,15,.9)";
+    ctx.fillRect(x,Math.max(0,y-34),tw,34);
+    ctx.fillStyle="#fff";
+    ctx.fillText(label,x+9,Math.max(24,y-9));
+  });
+}
+function setLevel(text,level){
+  alarmLevel.textContent=text;
+  alarmLevel.className=`level ${level}`;
+}
+function processStatus(c,items){
+  if(c.human===0&&c.vehicle===0&&c.animal===0){
+    statusValue.textContent="BÖLGE TEMİZ";
+    setLevel("BÖLGE TEMİZ","green");
+    return;
+  }
+
+  let message="",label="",level="yellow";
+  if(c.human>0&&c.vehicle>0){
+    label="İNSAN VE ARAÇ";level="red";
+    message=`Dikkat. Bölgede ${c.human} insan ve ${c.vehicle} araç tespit edildi.`;
+  }else if(c.human>0){
+    label="İNSAN TESPİTİ";level="red";
+    message=c.human===1?"Dikkat. Bölgede insan tespit edildi.":`Dikkat. Bölgede ${c.human} insan tespit edildi.`;
+  }else if(c.vehicle>0){
+    label="ARAÇ TESPİTİ";level="orange";
+    message=c.vehicle===1?"Dikkat. Bölgede araç tespit edildi.":`Dikkat. Bölgede ${c.vehicle} araç tespit edildi.`;
+  }else{
+    label="HAYVAN TESPİTİ";level="yellow";
+    message=c.animal===1?"Bilgilendirme. Bölgede hayvan tespit edildi.":`Bilgilendirme. Bölgede ${c.animal} hayvan tespit edildi.`;
+  }
+
+  statusValue.textContent=label;
+  setLevel(label,level);
+
+  const now=Date.now();
+  if(now-lastEventAt>=settings.cooldown*1000){
+    lastEventAt=now;
+    eventCount++;
+    eventCountEl.textContent=eventCount;
+    lastAlert.textContent=`Son ikaz: ${new Date().toLocaleTimeString("tr-TR")} - ${message}`;
+    addLog(message,level);
+    queueSpeech(message);
+  }
+}
+function addLog(message,level){
+  const empty=logList.querySelector(".empty");
+  if(empty)logList.innerHTML="";
+  const row=document.createElement("div");
+  row.className="log-item";
+  row.innerHTML=`<div><strong>${level.toUpperCase()} SEVİYE</strong><br><small>${message}</small></div>
+    <small>${new Date().toLocaleTimeString("tr-TR")}</small>`;
+  logList.prepend(row);
+}
+function queueSpeech(text){
+  if(!soundEnabled || !("speechSynthesis" in window))return;
+  if(speechQueue[speechQueue.length-1]===text)return;
+  speechQueue.push(text);
+  playNextSpeech();
+}
+function playNextSpeech(){
+  if(speechBusy || !soundEnabled || speechQueue.length===0)return;
+  speechBusy=true;
+  const text=speechQueue.shift();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="tr-TR";
+  u.rate=settings.voiceRate/100;
+  u.pitch=.95;
+  u.volume=1;
+  const voices=speechSynthesis.getVoices();
+  const trVoice=voices.find(v=>v.lang&&v.lang.toLowerCase().startsWith("tr"));
+  if(trVoice)u.voice=trVoice;
+  const finish=()=>{speechBusy=false;setTimeout(playNextSpeech,300)};
+  u.onend=finish;u.onerror=finish;
+  speechSynthesis.speak(u);
+}
+
+(async function init(){
+  loadSettings();
+  await loadModel();
+  if(localStorage.getItem("yzgt_login")==="1")loginScreen.classList.add("hidden");
+  else loginScreen.classList.remove("hidden");
+})();
+</script>
+</body>
+</html>
