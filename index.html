@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1110" />
+  <title>YZGT Mobil Prototip</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <style>
+    :root {
+      --bg: #08100d;
+      --panel: #111a16;
+      --panel-2: #17221d;
+      --line: #294238;
+      --text: #eef8f1;
+      --muted: #9db0a6;
+      --accent: #58d68d;
+      --warn: #f5b041;
+      --danger: #ff5f5f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(41, 98, 73, 0.25), transparent 38%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      width: min(100%, 980px);
+      margin: 0 auto;
+      padding: 14px;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .title h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0.5px;
+    }
+
+    .title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badge {
+      border: 1px solid var(--line);
+      background: rgba(88, 214, 141, 0.08);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 8px 11px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .camera-card,
+    .stats,
+    .logs {
+      background: rgba(17, 26, 22, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 14px 40px rgba(0,0,0,0.24);
+    }
+
+    .camera-wrap {
+      position: relative;
+      background: #000;
+      aspect-ratio: 9 / 16;
+      max-height: 68vh;
+      overflow: hidden;
+    }
+
+    video,
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    video { transform: scaleX(1); }
+
+    .scan-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      box-shadow: 0 0 14px var(--accent);
+      animation: scan 2.8s linear infinite;
+      pointer-events: none;
+      opacity: 0.65;
+    }
+
+    @keyframes scan {
+      from { top: 4%; }
+      to { top: 96%; }
+    }
+
+    .camera-message {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      background: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.55));
+      z-index: 3;
+    }
+
+    .camera-message.hidden { display: none; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 13px;
+      padding: 14px 12px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: #062012;
+    }
+
+    .secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .stats {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--line);
+    }
+
+    .stat {
+      background: var(--panel);
+      padding: 14px 10px;
+      text-align: center;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .stat strong {
+      font-size: 20px;
+    }
+
+    .logs {
+      margin-top: 12px;
+      padding: 14px;
+    }
+
+    .logs h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    #logList {
+      display: grid;
+      gap: 8px;
+      max-height: 240px;
+      overflow: auto;
+    }
+
+    .log-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      font-size: 13px;
+    }
+
+    .log-item small { color: var(--muted); }
+
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px 0;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 12px 4px 0;
+    }
+
+    @media (min-width: 720px) {
+      .camera-wrap { aspect-ratio: 16 / 9; }
+      .app { padding-top: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="title">
+        <h1>YZGT Mobil Prototip</h1>
+        <p>Yapay zekâ destekli kamera izleme</p>
+      </div>
+      <div class="badge" id="systemBadge">Sistem hazır değil</div>
+    </header>
+
+    <section class="camera-card">
+      <div class="camera-wrap" id="cameraWrap">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+        <div class="scan-line"></div>
+        <div class="camera-message" id="cameraMessage">
+          <div>
+            <strong>Kamera kapalı</strong>
+            <p>Başlat düğmesine basıp kamera izni ver.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="primary" id="startBtn">Kamerayı Başlat</button>
+        <button class="secondary" id="switchBtn" disabled>Kamerayı Değiştir</button>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat">
+        <span>İnsan Sayısı</span>
+        <strong id="personCount">0</strong>
+      </div>
+      <div class="stat">
+        <span>Durum</span>
+        <strong id="statusText">Beklemede</strong>
+      </div>
+      <div class="stat">
+        <span>Olay</span>
+        <strong id="eventCount">0</strong>
+      </div>
+    </section>
+
+    <section class="logs">
+      <h2>Olay Kayıtları</h2>
+      <div id="logList">
+        <div class="empty">Henüz olay kaydı yok.</div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      Bu sürüm sunum ve prototip amaçlıdır. Görüntü tarayıcı içinde işlenir; yüz tanıma yapmaz,
+      kimlik belirlemez ve otomatik karar vermez.
+    </p>
+  </main>
+
+  <script>
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("overlay");
+    const ctx = canvas.getContext("2d");
+
+    const startBtn = document.getElementById("startBtn");
+    const switchBtn = document.getElementById("switchBtn");
+    const cameraMessage = document.getElementById("cameraMessage");
+    const personCountEl = document.getElementById("personCount");
+    const statusText = document.getElementById("statusText");
+    const eventCountEl = document.getElementById("eventCount");
+    const systemBadge = document.getElementById("systemBadge");
+    const logList = document.getElementById("logList");
+
+    let model = null;
+    let stream = null;
+    let running = false;
+    let facingMode = "environment";
+    let eventCount = 0;
+    let lastLoggedAt = 0;
+    let previousPersonCount = 0;
+
+    async function loadModel() {
+      try {
+        systemBadge.textContent = "Model yükleniyor";
+        model = await cocoSsd.load();
+        systemBadge.textContent = "Yapay zekâ hazır";
+      } catch (error) {
+        console.error(error);
+        systemBadge.textContent = "Model yüklenemedi";
+        alert("Yapay zekâ modeli yüklenemedi. İnternet bağlantısını kontrol et.");
+      }
+    }
+
+    async function startCamera() {
+      if (!model) {
+        alert("Yapay zekâ modeli henüz hazır değil.");
+        return;
+      }
+
+      stopCamera();
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        running = true;
+        startBtn.textContent = "Kamerayı Durdur";
+        switchBtn.disabled = false;
+        cameraMessage.classList.add("hidden");
+        statusText.textContent = "Aktif";
+        systemBadge.textContent = "Canlı izleme";
+        detectLoop();
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Kamera hatası";
+        alert("Kamera açılamadı. Safari ayarlarından kamera iznini kontrol et.");
+      }
+    }
+
+    function stopCamera() {
+      running = false;
+
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+
+      video.srcObject = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      startBtn.textContent = "Kamerayı Başlat";
+      switchBtn.disabled = true;
+      cameraMessage.classList.remove("hidden");
+      personCountEl.textContent = "0";
+      statusText.textContent = "Beklemede";
+      systemBadge.textContent = model ? "Yapay zekâ hazır" : "Sistem hazır değil";
+    }
+
+    async function switchCamera() {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+      await startCamera();
+    }
+
+    function resizeCanvas() {
+      canvas.width = video.videoWidth || video.clientWidth;
+      canvas.height = video.videoHeight || video.clientHeight;
+    }
+
+    async function detectLoop() {
+      if (!running) return;
+
+      if (video.readyState >= 2) {
+        resizeCanvas();
+
+        try {
+          const predictions = await model.detect(video);
+          const people = predictions.filter(
+            item => item.class === "person" && item.score >= 0.55
+          );
+
+          drawPredictions(people);
+          personCountEl.textContent = people.length;
+
+          if (people.length > 0) {
+            statusText.textContent = "İnsan algılandı";
+          } else {
+            statusText.textContent = "Alan temiz";
+          }
+
+          maybeLogEvent(people.length);
+        } catch (error) {
+          console.error(error);
+          statusText.textContent = "Algılama hatası";
+        }
+      }
+
+      requestAnimationFrame(detectLoop);
+    }
+
+    function drawPredictions(people) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      people.forEach((item, index) => {
+        const [x, y, width, height] = item.bbox;
+        const score = Math.round(item.score * 100);
+
+        ctx.strokeStyle = "#58d68d";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x, y, width, height);
+
+        const label = `İNSAN ${index + 1} - %${score}`;
+        ctx.font = "bold 22px Arial";
+        const labelWidth = ctx.measureText(label).width + 18;
+
+        ctx.fillStyle = "rgba(6, 32, 18, 0.88)";
+        ctx.fillRect(x, Math.max(0, y - 34), labelWidth, 34);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(label, x + 9, Math.max(24, y - 9));
+      });
+    }
+
+    function maybeLogEvent(personCount) {
+      const now = Date.now();
+
+      if (
+        personCount > 0 &&
+        (previousPersonCount === 0 || now - lastLoggedAt > 15000)
+      ) {
+        lastLoggedAt = now;
+        eventCount += 1;
+        eventCountEl.textContent = eventCount;
+        addLog(personCount);
+      }
+
+      previousPersonCount = personCount;
+    }
+
+    function addLog(personCount) {
+      if (logList.querySelector(".empty")) {
+        logList.innerHTML = "";
+      }
+
+      const row = document.createElement("div");
+      row.className = "log-item";
+
+      const now = new Date();
+      row.innerHTML = `
+        <div>
+          <strong>İnsan tespit edildi</strong><br>
+          <small>${personCount} kişi algılandı</small>
+        </div>
+        <small>${now.toLocaleTimeString("tr-TR")}</small>
+      `;
+
+      logList.prepend(row);
+    }
+
+    startBtn.addEventListener("click", () => {
+      if (running) stopCamera();
+      else startCamera();
+    });
+
+    switchBtn.addEventListener("click", switchCamera);
+
+    loadModel();
+  </script>
+</body>
+</html>
