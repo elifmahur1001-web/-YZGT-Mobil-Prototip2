@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Akıllı Kamera</title>
+  <style>
+    body { margin:0; background:#000; color:white; text-align:center; font-family:sans-serif; }
+    video, canvas { width:100%; max-width:500px; border:2px solid #00ff88; }
+    #uyari { font-size:24px; margin:10px; color:#00ff88; }
+  </style>
+</head>
+<body>
+  <h1>Akıllı Kamera Sistemi</h1>
+  <div id="uyari">İzleniyor...</div>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" hidden></canvas>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const uyari = document.getElementById('uyari');
+    const ctx = canvas.getContext('2d');
+    let oncekiKare = null;
+
+    navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}})
+     .then(stream => { video.srcObject = stream; });
+
+    video.onplay = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      setInterval(kareleriKarsilastir, 300);
+    }
+
+    function kareleriKarsilastir() {
+      ctx.drawImage(video, 0, 0);
+      const suankiKare = ctx.getImageData(0,0,canvas.width,canvas.height);
+
+      if(oncekiKare) {
+        let fark = 0;
+        for(let i=0; i<suankiKare.data.length; i+=40){ // hız için her 10 pikseli kontrol et
+          fark += Math.abs(suankiKare.data[i] - oncekiKare.data[i]);
+        }
+        if(fark > 50000){
+          uyari.innerText = "⚠️ HAREKET ALGILANDI!";
+          uyari.style.color = "red";
+          setTimeout(()=>{uyari.innerText="İzleniyor..."; uyari.style.color="#00ff88";}, 2000);
+        }
+      }
+      oncekiKare = suankiKare;
+    }
+  </script>
+</body>
+</html>
