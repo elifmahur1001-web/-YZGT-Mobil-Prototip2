@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#07100d" />
+  <title>YZGT v2.0 Mobil Erken Uyarı Sistemi</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+
+  <style>
+    :root{
+      --bg:#07100d;--panel:#101a16;--panel2:#17241e;--line:#2b443a;
+      --text:#eef7f1;--muted:#9eb1a7;--green:#58d68d;--yellow:#f4d03f;
+      --orange:#f39c12;--red:#ff5f5f;--cyan:#56c9f5;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:
+      radial-gradient(circle at top,rgba(50,100,75,.28),transparent 38%),var(--bg);
+      color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .app{width:min(100%,980px);margin:0 auto;padding:14px;
+      padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+    .header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+    h1{margin:0;font-size:20px}.sub{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .badge{padding:8px 11px;border:1px solid var(--line);border-radius:999px;
+      color:var(--green);background:rgba(88,214,141,.08);font-size:12px;white-space:nowrap}
+    .card,.panel{background:rgba(16,26,22,.95);border:1px solid var(--line);
+      border-radius:18px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.24)}
+    .camera-wrap{position:relative;background:#000;aspect-ratio:9/16;max-height:66vh;overflow:hidden}
+    video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .camera-message{position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+      padding:24px;color:var(--muted);background:linear-gradient(rgba(0,0,0,.35),rgba(0,0,0,.65));z-index:3}
+    .hidden{display:none!important}
+    .controls{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:9px;padding:12px}
+    button{border:0;border-radius:13px;padding:13px 8px;font-weight:800;font-size:13px}
+    .primary{background:var(--green);color:#062013}.secondary{background:var(--panel2);
+      color:var(--text);border:1px solid var(--line)}.danger{background:#42191a;color:#ffdede;border:1px solid #703032}
+    button:disabled{opacity:.45}
+    .summary{margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+      background:var(--line);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+    .stat{background:var(--panel);text-align:center;padding:13px 5px}.stat span{display:block;
+      font-size:12px;color:var(--muted);margin-bottom:6px}.stat strong{font-size:21px}
+    .panel{margin-top:12px;padding:14px}.status-line{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .small-title{font-size:12px;color:var(--muted);margin-bottom:5px}.status-value{font-size:20px;font-weight:900}
+    .level{border-radius:999px;padding:8px 11px;font-size:12px;font-weight:900;border:1px solid var(--line)}
+    .green{color:var(--green);background:rgba(88,214,141,.09)}
+    .yellow{color:var(--yellow);background:rgba(244,208,63,.09)}
+    .orange{color:var(--orange);background:rgba(243,156,18,.09)}
+    .red{color:var(--red);background:rgba(255,95,95,.09)}
+    .meta{margin-top:10px;color:var(--muted);font-size:13px;line-height:1.55}
+    .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .section-head h2{margin:0;font-size:16px}.mini{padding:9px 10px;font-size:12px}
+    #logList{display:grid;gap:8px;max-height:300px;overflow:auto}
+    .log-item{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:center;
+      padding:9px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
+    .thumb{width:72px;height:72px;object-fit:cover;border-radius:9px;background:#050806}
+    .log-main{font-size:13px}.log-main small{display:block;color:var(--muted);margin-top:4px;line-height:1.4}
+    .empty{color:var(--muted);font-size:13px;padding:8px 0}
+    .footer{margin:12px 4px 0;color:var(--muted);font-size:12px;line-height:1.5}
+    @media(min-width:720px){.camera-wrap{aspect-ratio:16/9}.app{padding-top:24px}}
+
+    .login-screen{
+      position:fixed;inset:0;z-index:9999;display:grid;place-items:center;
+      padding:20px;background:
+      radial-gradient(circle at top,rgba(50,100,75,.35),transparent 40%),
+      linear-gradient(180deg,#06100c,#091611 70%,#06100c);
+    }
+    .login-box{
+      width:min(100%,390px);background:rgba(16,26,22,.97);border:1px solid var(--line);
+      border-radius:24px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.45);
+    }
+    .login-logo{
+      width:72px;height:72px;margin:0 auto 14px;border-radius:20px;
+      display:grid;place-items:center;font-size:34px;background:rgba(88,214,141,.1);
+      border:1px solid rgba(88,214,141,.35);
+    }
+    .login-box h2{margin:0;text-align:center;font-size:22px}
+    .login-box .login-sub{margin:7px 0 20px;text-align:center;color:var(--muted);font-size:13px}
+    .field{margin-bottom:13px}
+    .field label{display:block;margin-bottom:7px;color:var(--muted);font-size:12px;font-weight:700}
+    .field input{
+      width:100%;border:1px solid var(--line);border-radius:13px;padding:14px 13px;
+      background:var(--panel2);color:var(--text);font-size:15px;outline:none;
+    }
+    .field input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(88,214,141,.1)}
+    .login-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 16px}
+    .remember{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+    .remember input{accent-color:var(--green)}
+    .login-btn{width:100%;background:var(--green);color:#062013;padding:14px;font-size:15px}
+    .login-error{display:none;margin-top:12px;padding:10px;border-radius:11px;
+      background:rgba(255,95,95,.1);color:#ffb7b7;border:1px solid rgba(255,95,95,.3);
+      font-size:12px;text-align:center}
+    .login-error.show{display:block}
+    .login-note{margin:14px 0 0;color:var(--muted);font-size:11px;line-height:1.5;text-align:center}
+    .top-actions{display:flex;align-items:center;gap:8px}
+    .logout-btn{padding:8px 10px;font-size:12px}
+
+  </style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">🛡️</div>
+    <h2>YZGT Sistem Girişi</h2>
+    <p class="login-sub">Yapay Zekâ Destekli Güvenlik ve Takip Sistemi</p>
+
+    <div class="field">
+      <label for="username">KULLANICI ADI</label>
+      <input id="username" type="text" autocomplete="username" placeholder="Kullanıcı adını gir">
+    </div>
+
+    <div class="field">
+      <label for="password">ŞİFRE</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Şifreni gir">
+    </div>
+
+    <div class="login-row">
+      <label class="remember">
+        <input id="rememberMe" type="checkbox">
+        Beni hatırla
+      </label>
+      <span style="color:var(--muted);font-size:12px">Güvenli erişim</span>
+    </div>
+
+    <button class="login-btn" id="loginBtn">Sisteme Giriş Yap</button>
+    <div class="login-error" id="loginError">Kullanıcı adı veya şifre hatalı.</div>
+
+    <p class="login-note">
+      Demo kullanıcı adı: <strong>admin</strong> &nbsp; Şifre: <strong>1234</strong><br>
+      Bu giriş ekranı prototip amaçlıdır.
+    </p>
+  </div>
+</div>
+
+<main class="app">
+  <header class="header">
+    <div>
+      <h1>YZGT v2.0 Mobil Erken Uyarı</h1>
+      <p class="sub">Doğrulamalı tespit, sesli ikaz, fotoğraf ve GPS kaydı</p>
+    </div>
+    <div class="top-actions"><div class="badge" id="systemBadge">Model yükleniyor</div><button class="secondary logout-btn" id="logoutBtn">Çıkış</button></div>
+  </header>
+
+  <section class="card">
+    <div class="camera-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div class="camera-message" id="cameraMessage">
+        <div><strong>Kamera kapalı</strong><p>Kamerayı başlatıp kamera ve konum izni ver.</p></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="startBtn">Kamerayı Başlat</button>
+      <button class="secondary" id="switchBtn" disabled>Kamera Değiştir</button>
+      <button class="secondary" id="soundBtn">Ses Açık</button>
+    </div>
+  </section>
+
+  <section class="summary">
+    <div class="stat"><span>İnsan</span><strong id="humanCount">0</strong></div>
+    <div class="stat"><span>Araç</span><strong id="vehicleCount">0</strong></div>
+    <div class="stat"><span>Hayvan</span><strong id="animalCount">0</strong></div>
+    <div class="stat"><span>Kayıt</span><strong id="eventCount">0</strong></div>
+  </section>
+
+  <section class="panel">
+    <div class="status-line">
+      <div><div class="small-title">SİSTEM DURUMU</div><div class="status-value" id="statusValue">BEKLEMEDE</div></div>
+      <div class="level green" id="alarmLevel">BÖLGE TEMİZ</div>
+    </div>
+    <div class="meta" id="locationText">Konum: Henüz alınmadı.</div>
+    <div class="meta" id="lastAlert">Son ikaz: Henüz kayıt yok.</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <h2>Fotoğraflı Olay Kayıtları</h2>
+      <button class="danger mini" id="clearBtn">Kayıtları Sil</button>
+    </div>
+    <div id="logList"><div class="empty">Henüz olay kaydı yok.</div></div>
+  </section>
+
+  <p class="footer">
+    Prototip, görüntüyü telefon tarayıcısında işler. Yüz tanıma ve kimlik belirleme yapmaz.
+    Konum yalnızca izin verilirse olay kaydına eklenir.
+  </p>
+</main>
+
+<script>
+const video=document.getElementById("video"),canvas=document.getElementById("overlay"),ctx=canvas.getContext("2d");
+const startBtn=document.getElementById("startBtn"),switchBtn=document.getElementById("switchBtn"),
+soundBtn=document.getElementById("soundBtn"),clearBtn=document.getElementById("clearBtn"),
+cameraMessage=document.getElementById("cameraMessage");
+const humanCountEl=document.getElementById("humanCount"),vehicleCountEl=document.getElementById("vehicleCount"),
+animalCountEl=document.getElementById("animalCount"),eventCountEl=document.getElementById("eventCount"),
+statusValue=document.getElementById("statusValue"),alarmLevel=document.getElementById("alarmLevel"),
+lastAlert=document.getElementById("lastAlert"),locationText=document.getElementById("locationText"),
+systemBadge=document.getElementById("systemBadge"),logList=document.getElementById("logList");
+
+
+const loginScreen=document.getElementById("loginScreen"),loginBtn=document.getElementById("loginBtn"),
+usernameInput=document.getElementById("username"),passwordInput=document.getElementById("password"),
+rememberMe=document.getElementById("rememberMe"),loginError=document.getElementById("loginError"),
+logoutBtn=document.getElementById("logoutBtn");
+
+const DEMO_USER="admin",DEMO_PASS="1234";
+
+function showApp(){
+  loginScreen.classList.add("hidden");
+  loginError.classList.remove("show");
+}
+function showLogin(){
+  stopCamera();
+  loginScreen.classList.remove("hidden");
+  passwordInput.value="";
+  setTimeout(()=>usernameInput.focus(),100);
+}
+function attemptLogin(){
+  const user=usernameInput.value.trim(),pass=passwordInput.value;
+  if(user===DEMO_USER&&pass===DEMO_PASS){
+    if(rememberMe.checked)localStorage.setItem("yzgt_login","1");
+    else localStorage.removeItem("yzgt_login");
+    showApp();
+  }else{
+    loginError.classList.add("show");
+    passwordInput.value="";
+    passwordInput.focus();
+  }
+}
+loginBtn.onclick=attemptLogin;
+passwordInput.addEventListener("keydown",e=>{if(e.key==="Enter")attemptLogin()});
+usernameInput.addEventListener("keydown",e=>{if(e.key==="Enter")passwordInput.focus()});
+logoutBtn.onclick=()=>{
+  localStorage.removeItem("yzgt_login");
+  showLogin();
+};
+
+const HUMAN=["person"];
+const VEHICLES=["car","truck","bus","motorcycle","bicycle"];
+const ANIMALS=["bird","cat","dog","horse","sheep","cow"];
+const LABELS={person:"İnsan",car:"Otomobil",truck:"Kamyon",bus:"Otobüs",motorcycle:"Motosiklet",
+bicycle:"Bisiklet",bird:"Kuş",cat:"Kedi",dog:"Köpek",horse:"At",sheep:"Koyun",cow:"Büyükbaş"};
+
+const CONF={person:.68,car:.72,truck:.72,bus:.72,motorcycle:.72,bicycle:.72,
+bird:.78,cat:.78,dog:.78,horse:.78,sheep:.78,cow:.78};
+const REQUIRED_STREAK=3, EVENT_COOLDOWN=15000, MIN_AREA_RATIO=.012;
+
+let model=null,stream=null,running=false,facingMode="environment",soundEnabled=true;
+let currentLocation=null,eventCount=0,lastEventAt={human:0,vehicle:0,animal:0};
+let streak={human:0,vehicle:0,animal:0},confirmed={human:false,vehicle:false,animal:false};
+let speaking=false,speechQueue=[],db=null;
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open("YZGT_DB",1);
+    req.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains("events")){
+      d.createObjectStore("events",{keyPath:"id",autoIncrement:true});
+    }};
+    req.onsuccess=e=>{db=e.target.result;resolve(db)};
+    req.onerror=()=>reject(req.error);
+  });
+}
+function saveEventDB(event){
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction("events","readwrite");tx.objectStore("events").add(event);
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+}
+function getEventsDB(){
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction("events","readonly"),req=tx.objectStore("events").getAll();
+    req.onsuccess=()=>resolve(req.result.reverse());req.onerror=()=>reject(req.error);
+  });
+}
+function clearEventsDB(){
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction("events","readwrite");tx.objectStore("events").clear();
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+}
+
+async function loadModel(){
+  try{systemBadge.textContent="Model yükleniyor";model=await cocoSsd.load();
+    systemBadge.textContent="Yapay zekâ hazır";
+  }catch(e){console.error(e);systemBadge.textContent="Model yüklenemedi";
+    alert("Model yüklenemedi. İnternet bağlantısını kontrol et.");}
+}
+function requestLocation(){
+  if(!navigator.geolocation){locationText.textContent="Konum: Bu cihaz desteklemiyor.";return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    currentLocation={lat:pos.coords.latitude,lon:pos.coords.longitude,accuracy:pos.coords.accuracy};
+    locationText.textContent=`Konum: ${currentLocation.lat.toFixed(6)}, ${currentLocation.lon.toFixed(6)} (±${Math.round(currentLocation.accuracy)} m)`;
+  },()=>{locationText.textContent="Konum: İzin verilmedi veya alınamadı.";},
+  {enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+}
+
+async function startCamera(){
+  if(!model){alert("Yapay zekâ modeli henüz hazır değil.");return;}
+  stopCamera();requestLocation();
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facingMode},
+      width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream;await video.play();running=true;
+    startBtn.textContent="Kamerayı Durdur";switchBtn.disabled=false;cameraMessage.classList.add("hidden");
+    statusValue.textContent="CANLI İZLEME";systemBadge.textContent="Canlı izleme";detectLoop();
+  }catch(e){console.error(e);alert("Kamera açılamadı. Kamera iznini kontrol et.");}
+}
+function stopCamera(){
+  running=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  video.srcObject=null;ctx.clearRect(0,0,canvas.width,canvas.height);
+  startBtn.textContent="Kamerayı Başlat";switchBtn.disabled=true;cameraMessage.classList.remove("hidden");
+  humanCountEl.textContent=vehicleCountEl.textContent=animalCountEl.textContent="0";
+  statusValue.textContent="BEKLEMEDE";setAlarm("BÖLGE TEMİZ","green");
+  systemBadge.textContent=model?"Yapay zekâ hazır":"Model yükleniyor";
+  streak={human:0,vehicle:0,animal:0};confirmed={human:false,vehicle:false,animal:false};
+}
+async function switchCamera(){facingMode=facingMode==="environment"?"user":"environment";await startCamera()}
+function resizeCanvas(){canvas.width=video.videoWidth||video.clientWidth;canvas.height=video.videoHeight||video.clientHeight}
+
+function categoryOf(cls){if(HUMAN.includes(cls))return"human";if(VEHICLES.includes(cls))return"vehicle";if(ANIMALS.includes(cls))return"animal";return null}
+function acceptPrediction(p){
+  const cat=categoryOf(p.class);if(!cat)return false;
+  if(p.score<(CONF[p.class]||.75))return false;
+  const area=p.bbox[2]*p.bbox[3],frameArea=Math.max(1,video.videoWidth*video.videoHeight);
+  return area/frameArea>=MIN_AREA_RATIO;
+}
+
+async function detectLoop(){
+  if(!running)return;
+  if(video.readyState>=2){
+    resizeCanvas();
+    try{
+      const raw=await model.detect(video);
+      const items=raw.filter(acceptPrediction);
+      const counts={human:0,vehicle:0,animal:0};
+      items.forEach(x=>counts[categoryOf(x.class)]++);
+      updateStreaks(counts);
+      const stable={
+        human:confirmed.human?counts.human:0,
+        vehicle:confirmed.vehicle?counts.vehicle:0,
+        animal:confirmed.animal?counts.animal:0
+      };
+      humanCountEl.textContent=stable.human;vehicleCountEl.textContent=stable.vehicle;animalCountEl.textContent=stable.animal;
+      drawPredictions(items);await processEvents(stable,items);
+    }catch(e){console.error(e);statusValue.textContent="ALGILAMA HATASI";}
+  }
+  setTimeout(detectLoop,180);
+}
+function updateStreaks(counts){
+  for(const key of ["human","vehicle","animal"]){
+    if(counts[key]>0){streak[key]++;if(streak[key]>=REQUIRED_STREAK)confirmed[key]=true}
+    else{streak[key]=0;confirmed[key]=false}
+  }
+}
+function drawPredictions(items){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  items.forEach(p=>{
+    const [x,y,w,h]=p.bbox,cat=categoryOf(p.class);
+    const color=cat==="human"?"#58d68d":cat==="vehicle"?"#56c9f5":"#f4d03f";
+    ctx.strokeStyle=color;ctx.lineWidth=4;ctx.strokeRect(x,y,w,h);
+    const label=`${LABELS[p.class]||p.class} %${Math.round(p.score*100)}`;
+    ctx.font="bold 22px Arial";const tw=ctx.measureText(label).width+18;
+    ctx.fillStyle="rgba(6,22,16,.88)";ctx.fillRect(x,Math.max(0,y-34),tw,34);
+    ctx.fillStyle="#fff";ctx.fillText(label,x+9,Math.max(24,y-9));
+  });
+}
+function setAlarm(text,level){alarmLevel.textContent=text;alarmLevel.className=`level ${level}`}
+
+async function processEvents(c,items){
+  if(c.human===0&&c.vehicle===0&&c.animal===0){
+    statusValue.textContent="BÖLGE TEMİZ";setAlarm("BÖLGE TEMİZ","green");return;
+  }
+  let label="",level="yellow";
+  if(c.human>0&&c.vehicle>0){label="İNSAN VE ARAÇ";level="red"}
+  else if(c.human>0){label="İNSAN TESPİTİ";level="red"}
+  else if(c.vehicle>0){label="ARAÇ TESPİTİ";level="orange"}
+  else{label="HAYVAN TESPİTİ";level="yellow"}
+  statusValue.textContent=label;setAlarm(label,level);
+
+  const now=Date.now();
+  for(const cat of ["human","vehicle","animal"]){
+    if(c[cat]>0&&now-lastEventAt[cat]>=EVENT_COOLDOWN){
+      lastEventAt[cat]=now;
+      const names=items.filter(x=>categoryOf(x.class)===cat).map(x=>LABELS[x.class]||x.class);
+      await createEvent(cat,c[cat],names);
+    }
+  }
+}
+function categoryText(cat,count,names){
+  const unique=[...new Set(names)].join(", ");
+  if(cat==="human")return count===1?"Dikkat. Bölgede insan tespit edildi.":`Dikkat. Bölgede ${count} insan tespit edildi.`;
+  if(cat==="vehicle")return count===1?`Dikkat. Bölgede araç tespit edildi${unique?": "+unique:""}.`:
+    `Dikkat. Bölgede ${count} araç tespit edildi${unique?": "+unique:""}.`;
+  return count===1?`Bilgilendirme. Bölgede hayvan tespit edildi${unique?": "+unique:""}.`:
+    `Bilgilendirme. Bölgede ${count} hayvan tespit edildi${unique?": "+unique:""}.`;
+}
+function captureImage(){
+  const shot=document.createElement("canvas");shot.width=canvas.width;shot.height=canvas.height;
+  const sctx=shot.getContext("2d");sctx.drawImage(video,0,0,shot.width,shot.height);sctx.drawImage(canvas,0,0);
+  return shot.toDataURL("image/jpeg",.78);
+}
+async function createEvent(cat,count,names){
+  const message=categoryText(cat,count,names),now=new Date();
+  const event={category:cat,count,names,message,time:now.toISOString(),image:captureImage(),
+    location:currentLocation?{...currentLocation}:null};
+  await saveEventDB(event);eventCount++;eventCountEl.textContent=eventCount;
+  lastAlert.textContent=`Son ikaz: ${now.toLocaleTimeString("tr-TR")} - ${message}`;
+  enqueueSpeech(message);renderEvents();
+}
+
+function enqueueSpeech(text){
+  if(!soundEnabled)return;
+  if(speechQueue[speechQueue.length-1]===text)return;
+  speechQueue.push(text);playNextSpeech();
+}
+function playNextSpeech(){
+  if(speaking||speechQueue.length===0||!soundEnabled||!("speechSynthesis"in window))return;
+  speaking=true;const text=speechQueue.shift(),u=new SpeechSynthesisUtterance(text);
+  u.lang="tr-TR";u.rate=.9;u.pitch=.95;u.volume=1;
+  const voices=speechSynthesis.getVoices(),tr=voices.find(v=>v.lang&&v.lang.toLowerCase().startsWith("tr"));
+  if(tr)u.voice=tr;
+  u.onend=u.onerror=()=>{speaking=false;setTimeout(playNextSpeech,250)};
+  speechSynthesis.speak(u);
+}
+
+async function renderEvents(){
+  const events=await getEventsDB();eventCount=events.length;eventCountEl.textContent=eventCount;
+  if(!events.length){logList.innerHTML='<div class="empty">Henüz olay kaydı yok.</div>';return}
+  logList.innerHTML="";
+  events.forEach(e=>{
+    const d=new Date(e.time),loc=e.location?`${e.location.lat.toFixed(6)}, ${e.location.lon.toFixed(6)}`:"Konum yok";
+    const row=document.createElement("div");row.className="log-item";
+    row.innerHTML=`<img class="thumb" src="${e.image}" alt="Olay fotoğrafı">
+      <div class="log-main"><strong>${e.message}</strong>
+      <small>${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR")}</small>
+      <small>Konum: ${loc}</small></div>`;
+    row.querySelector("img").onclick=()=>window.open(e.image,"_blank");
+    logList.appendChild(row);
+  });
+}
+
+startBtn.onclick=()=>running?stopCamera():startCamera();
+switchBtn.onclick=switchCamera;
+soundBtn.onclick=()=>{
+  soundEnabled=!soundEnabled;soundBtn.textContent=soundEnabled?"Ses Açık":"Ses Kapalı";
+  soundBtn.className=soundEnabled?"secondary":"danger";
+  if(!soundEnabled){speechQueue=[];speaking=false;if("speechSynthesis"in window)speechSynthesis.cancel()}
+  else enqueueSpeech("Sesli ikaz sistemi aktif.");
+};
+clearBtn.onclick=async()=>{
+  if(confirm("Tüm fotoğraflı olay kayıtları silinsin mi?")){await clearEventsDB();renderEvents();lastAlert.textContent="Son ikaz: Kayıtlar temizlendi."}
+};
+
+(async()=>{await openDB();await renderEvents();await loadModel();if(localStorage.getItem("yzgt_login")==="1")showApp();else showLogin()})();
+</script>
+</body>
+</html>
