@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Smart Vision - Akıllı Kamera</title>
+    <!-- Tailwind CSS -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- TensorFlow.js ve COCO-SSD -->
+    <script src="https://jsdelivr.net"></script>
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        .video-container { position: relative; display: inline-block; width: 100%; max-width: 640px; }
+        canvas { position: absolute; top: 0; left: 0; z-index: 10; width: 100%; height: 100%; }
+        video { width: 100%; height: auto; }
+    </style>
+</head>
+<body class="bg-slate-900 text-white font-sans min-h-screen flex flex-col items-center p-4">
+
+    <!-- Başlık -->
+    <header class="text-center my-4">
+        <h1 class="text-2xl font-extrabold text-blue-400 tracking-wider">AI SMART VISION</h1>
+        <p class="text-xs text-slate-400 mt-1">İnsan, Hayvan ve Araç Algılayan Ses Komutlu Sistem</p>
+    </header>
+
+    <!-- Ana Panel -->
+    <main class="w-full max-w-xl bg-slate-800 rounded-2xl p-4 shadow-xl border border-slate-700">
+        
+        <!-- Durum Göstergeleri -->
+        <div class="grid grid-cols-2 gap-3 mb-4 text-xs">
+            <div class="bg-slate-850 p-3 rounded-xl border border-slate-700">
+                <span class="text-slate-400 font-bold block mb-1">🎙️ SESLİ KOMUT:</span>
+                <p id="speech-status" class="text-yellow-400 font-medium">Mikrofon bekleniyor...</p>
+            </div>
+            <div class="bg-slate-850 p-3 rounded-xl border border-slate-700">
+                <span class="text-slate-400 font-bold block mb-1">🤖 AI MODELİ:</span>
+                <p id="model-status" class="text-red-400 font-medium">Yükleniyor... (Bekleyin)</p>
+            </div>
+        </div>
+
+        <!-- Kamera Alanı -->
+        <div class="flex justify-center items-center bg-black rounded-xl overflow-hidden p-1 bg-slate-950">
+            <div class="video-container">
+                <video id="webcam" autoplay playsinline muted class="rounded-lg hidden"></video>
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Butonlar -->
+        <div class="flex justify-center gap-4 mt-4">
+            <button id="btn-start" class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2 rounded-lg font-bold text-sm transition shadow" disabled>Kamerayı Aç</button>
+            <button id="btn-stop" class="bg-rose-600 hover:bg-rose-500 text-white px-5 py-2 rounded-lg font-bold text-sm transition shadow">Kamerayı Kapat</button>
+        </div>
+
+        <!-- Bilgilendirme -->
+        <div class="mt-4 text-center text-[11px] text-slate-500">
+            Komutlar: "Kamerayı Aç" / "Kamerayı Kapat"
+        </div>
+    </main>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const modelStatus = document.getElementById('model-status');
+        const speechStatus = document.getElementById('speech-status');
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+
+        let model = null;
+        let stream = null;
+        let isDetecting = false;
+
+        // 1. AI Modelini Yükle
+        async function loadModel() {
+            try {
+                model = await cocoSsd.load();
+                modelStatus.innerText = "Model Hazır! ✅";
+                modelStatus.className = "text-emerald-400 font-medium";
+                btnStart.disabled = false;
+            } catch (e) {
+                modelStatus.innerText = "Yükleme Hatası!";
+            }
+        }
+
+        // 2. Kamerayı Aç
+        async function startCamera() {
+            if (!model) return;
+            try {
+                // Mobil uyumluluk için arka kamerayı hedefler (facingMode: environment)
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } 
+                });
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                isDetecting = true;
+                
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    detectObjects();
+                };
+            } catch (err) {
+                alert("Kamera izni verilemedi veya kamera bulunamadı!");
+            }
+        }
+
+        // 3. Kamerayı Kapat
+        function stopCamera() {
+            isDetecting = false;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.classList.add('hidden');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        // 4. Nesne Algılama Döngüsü
+        async function detectObjects() {
+            if (!isDetecting || video.readyState < 2) {
+                if (isDetecting) requestAnimationFrame(detectObjects);
+                return;
+            }
+
+            const predictions = await model.detect(video);
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            predictions.forEach(p => {
+                const [x, y, w, h] = p.bbox;
+                const cls = p.class;
+                const score = (p.score * 100).toFixed(0);
+
+                let col = '#3b82f6'; // Diğer her şey için Mavi
+                
+                if (cls === 'person') col = '#ef4444'; // İnsan: Kırmızı
+                else if (['car', 'truck', 'bus', 'motorcycle'].includes(cls)) col = '#eab308'; // Araç: Sarı
+                else if (['cat', 'dog', 'bird', 'horse', 'sheep', 'cow'].includes(cls)) col = '#10b981'; // Hayvan: Yeşil
+
+                // Kutuyu Çiz
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, w, h);
+
+                // Etiket Arka Planı
+                ctx.fillStyle = col;
+                ctx.fillRect(x, y - 22, 110, 22);
+
+                // Yazı
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.fillText(`${cls.toUpperCase()} %${score}`, x + 5, y - 6);
+            });
+
+            requestAnimationFrame(detectObjects);
+        }
+
+        // 5. Ses Tanıma (Web Speech API)
+        function initSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                speechStatus.innerText = "Desteklenmiyor ❌";
+                return;
+            }
+
+            const rec = new SpeechRecognition();
+            rec.continuous = true;
+            rec.lang = 'tr-TR';
+
+            rec.onstart = () => {
+                speechStatus.innerText = "Dinleniyor... 🎧";
+                speechStatus.className = "text-emerald-400 font-medium";
+            };
+
+            rec.onresult = (e) => {
+                const cmd = e.results[e.resultIndex][0].transcript.toLowerCase();
+                if (cmd.includes('aç') || cmd.includes('başlat')) {
+                    startCamera();
+                } else if (cmd.includes('kapat') || cmd.includes('durdur')) {
+                    stopCamera();
+                }
+            };
+
+            rec.onend = () => rec.start(); // Bağlantı koparsa geri aç
+            rec.start();
+        }
+
+        // Dinleyiciler ve Tetikleyiciler
+        btnStart.addEventListener('click', startCamera);
+        btnStop.addEventListener('click', stopCamera);
+        loadModel();
+        initSpeech();
+    </script>
+</body>
+</html>
